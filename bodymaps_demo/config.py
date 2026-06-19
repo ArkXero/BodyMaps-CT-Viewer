@@ -19,6 +19,12 @@ def _default_sample_path() -> Path | None:
     return candidate.resolve() if candidate.is_file() else None
 
 
+def _default_artifacts_dir() -> Path:
+    if os.getenv("VERCEL"):
+        return Path("/tmp/bodymaps-artifacts")
+    return REPO_ROOT / "artifacts"
+
+
 @dataclass(frozen=True)
 class Settings:
     repo_root: Path
@@ -37,7 +43,7 @@ class Settings:
         max_upload_mb = int(os.getenv("BODYMAPS_MAX_UPLOAD_MB", "512"))
         return cls(
             repo_root=REPO_ROOT,
-            artifacts_dir=_path_from_env("BODYMAPS_ARTIFACTS_DIR", REPO_ROOT / "artifacts"),
+            artifacts_dir=_path_from_env("BODYMAPS_ARTIFACTS_DIR", _default_artifacts_dir()),
             static_dir=REPO_ROOT / "bodymaps_demo" / "static",
             adapter=os.getenv("BODYMAPS_ADAPTER", "bundle").strip().lower(),
             max_upload_bytes=max_upload_mb * 1024 * 1024,
