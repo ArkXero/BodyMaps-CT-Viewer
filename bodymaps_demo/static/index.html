@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Local-first BodyMaps CT model evaluation workflow."
+    />
+    <title>BodyMaps Inference Console</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="BodyMaps home">
+        <span class="brand-mark" aria-hidden="true">
+          <i></i><i></i><i></i>
+        </span>
+        <span>
+          <strong>BodyMaps</strong>
+          <small>Model Evaluation Console</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <span class="local-badge"><span></span> Local runtime</span>
+        <button class="button button-quiet" id="doctor-button" type="button">Run doctor</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow">Project 1 · Web Based View</div>
+        <h1>CT volume in.<br /><em>Model score out.</em></h1>
+        <p>
+          Upload a BodyMaps volume, run a traceable model adapter, compare predicted
+          anatomy against provided masks when available, and inspect output slices.
+        </p>
+        <div class="runtime-line">
+          <span id="adapter-name">Checking runtime…</span>
+          <span id="upload-limit"></span>
+        </div>
+      </section>
+
+      <section class="upload-shell" id="upload-section">
+        <form class="drop-zone" id="upload-form">
+          <input
+            id="file-input"
+            name="file"
+            type="file"
+            accept=".zip,.nii,.nii.gz"
+            aria-describedby="format-note"
+          />
+          <div class="upload-symbol" aria-hidden="true">+</div>
+          <div>
+            <h2>Start model test</h2>
+            <p id="file-label">Drop BodyMaps CT bundle here or choose file</p>
+            <small id="format-note">Accepted: .zip, .nii, .nii.gz</small>
+          </div>
+          <div class="upload-actions">
+            <label class="button button-primary" for="file-input">Choose CT</label>
+            <button class="button button-dark" id="upload-button" type="submit" disabled>
+              Run upload
+            </button>
+            <button class="button button-quiet" id="sample-button" type="button">
+              Run provided sample
+            </button>
+          </div>
+        </form>
+        <aside class="workflow-note">
+          <span class="section-index">01</span>
+          <h3>Score every runnable model</h3>
+          <p>Each run persists input, predictions, Dice/IoU metrics, process logs, command, exit code, and timing.</p>
+          <div class="flow">
+            <span>Validate</span><i></i><span>Infer</span><i></i><span>Score</span>
+          </div>
+        </aside>
+      </section>
+
+      <section class="job-panel hidden" id="job-panel" aria-live="polite">
+        <div class="job-heading">
+          <div>
+            <span class="section-index">02</span>
+            <p class="eyebrow">Current job</p>
+            <h2 id="job-title">Preparing volume</h2>
+          </div>
+          <span class="status-pill" id="status-pill">Queued</span>
+        </div>
+        <div class="progress-track"><span id="progress-bar"></span></div>
+        <p class="job-message" id="job-message">Persisting upload and preparing inference runner.</p>
+      </section>
+
+      <section class="results hidden" id="results-section">
+        <div class="results-header">
+          <div>
+            <span class="section-index">03</span>
+            <p class="eyebrow">Completed model run</p>
+            <h2>Score and inspect</h2>
+          </div>
+          <label class="overlay-toggle">
+            <input id="overlay-toggle" type="checkbox" checked />
+            <span></span>
+            Segmentation overlay
+          </label>
+        </div>
+
+        <article class="evaluation-card hidden" id="evaluation-card">
+          <div>
+            <span class="eyebrow">Model evaluation</span>
+            <h3 id="evaluation-summary"></h3>
+            <p id="evaluation-warning"></p>
+          </div>
+          <dl class="score-strip" id="score-strip"></dl>
+          <div class="evaluation-table-wrap">
+            <table class="evaluation-table">
+              <thead>
+                <tr>
+                  <th>Structure</th>
+                  <th>Dice</th>
+                  <th>IoU</th>
+                  <th>
+                    <span>FP voxels</span>
+                    <small>False positives: predicted voxels outside the reference mask.</small>
+                  </th>
+                  <th>
+                    <span>FN voxels</span>
+                    <small>False negatives: reference voxels missed by prediction.</small>
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="evaluation-rows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <div class="viewer-toolbar" id="viewer-toolbar">
+          <div>
+            <span class="eyebrow">Slice navigation</span>
+            <h3>Sync all planes</h3>
+            <p>Use the global scrubber to move axial, coronal, and sagittal by the same relative depth.</p>
+          </div>
+          <label class="global-slice-control">
+            <span>Sync scrub</span>
+            <input id="sync-slice-slider" type="range" min="0" max="1000" value="500" />
+            <output id="sync-slice-output">50%</output>
+          </label>
+        </div>
+
+        <div class="viewer-workstation" id="viewer-grid">
+          <aside class="viewer-filmstrip" aria-label="Plane thumbnails">
+          <article class="viewer-card viewer-thumb" data-plane="axial">
+            <div class="viewer-label">
+              <button class="plane-focus-button" type="button" data-select-plane="axial">Axial</button>
+              <span class="slice-value">0 / 0</span>
+            </div>
+            <div class="image-frame"><img data-plane-image="axial" alt="Axial CT slice with segmentation overlay" /></div>
+            <label class="viewer-scrubber">
+              <span>Local slice</span>
+              <input class="slice-slider" type="range" min="0" max="0" value="0" aria-label="Axial local slice" />
+              <output class="slice-output">0 / 0</output>
+            </label>
+          </article>
+          <article class="viewer-card viewer-thumb" data-plane="coronal">
+            <div class="viewer-label">
+              <button class="plane-focus-button" type="button" data-select-plane="coronal">Coronal</button>
+              <span class="slice-value">0 / 0</span>
+            </div>
+            <div class="image-frame"><img data-plane-image="coronal" alt="Coronal CT slice with segmentation overlay" /></div>
+            <label class="viewer-scrubber">
+              <span>Local slice</span>
+              <input class="slice-slider" type="range" min="0" max="0" value="0" aria-label="Coronal local slice" />
+              <output class="slice-output">0 / 0</output>
+            </label>
+          </article>
+          <article class="viewer-card viewer-thumb" data-plane="sagittal">
+            <div class="viewer-label">
+              <button class="plane-focus-button" type="button" data-select-plane="sagittal">Sagittal</button>
+              <span class="slice-value">0 / 0</span>
+            </div>
+            <div class="image-frame"><img data-plane-image="sagittal" alt="Sagittal CT slice with segmentation overlay" /></div>
+            <label class="viewer-scrubber">
+              <span>Local slice</span>
+              <input class="slice-slider" type="range" min="0" max="0" value="0" aria-label="Sagittal local slice" />
+              <output class="slice-output">0 / 0</output>
+            </label>
+          </article>
+          </aside>
+
+          <article class="viewer-card viewer-focus" id="viewer-focus-card">
+            <div class="viewer-label">
+              <strong id="focus-plane-label">Sagittal inspection</strong>
+              <span id="focus-slice-value">0 / 0</span>
+            </div>
+            <div class="image-frame" id="focus-image-frame">
+              <img id="focus-image" alt="Focused CT slice with segmentation overlay" />
+            </div>
+            <label class="viewer-scrubber viewer-focus-scrubber">
+              <span>Focus slice</span>
+              <input id="focus-slice-slider" class="slice-slider" type="range" min="0" max="0" value="0" aria-label="Focused plane local slice" />
+              <output id="focus-slice-output" class="slice-output">0 / 0</output>
+            </label>
+          </article>
+
+          <aside class="viewer-structure-card">
+            <span class="eyebrow">Top structures</span>
+            <div class="viewer-structure-list" id="viewer-structure-list"></div>
+          </aside>
+        </div>
+
+        <div class="result-details">
+          <article class="summary-card">
+            <span class="eyebrow">Result summary</span>
+            <h3 id="result-summary"></h3>
+            <p id="result-disclaimer"></p>
+            <dl class="metrics" id="metrics"></dl>
+          </article>
+          <article class="labels-card">
+            <span class="eyebrow">Detected structures</span>
+            <div class="label-list" id="label-list"></div>
+          </article>
+          <article class="trace-card">
+            <span class="eyebrow">Run trace</span>
+            <dl id="trace-list"></dl>
+            <div class="download-list" id="download-list"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="doctor-dialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">Runtime preflight</span>
+          <h2>BodyMaps doctor</h2>
+        </div>
+        <button class="icon-button" id="doctor-close" type="button" aria-label="Close doctor report">×</button>
+      </div>
+      <div class="doctor-summary" id="doctor-summary"></div>
+      <div class="doctor-checks" id="doctor-checks"></div>
+    </dialog>
+
+    <footer>
+      <span>Local artifacts only</span>
+      <span>Not for clinical use</span>
+      <span>BodyMaps developer application MVP</span>
+    </footer>
+  </body>
+</html>

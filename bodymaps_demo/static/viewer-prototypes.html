@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BodyMaps Viewer Prototypes</title>
+    <link rel="stylesheet" href="/static/viewer-prototypes.css" />
+    <script src="/static/viewer-prototypes.js" defer></script>
+  </head>
+  <body>
+    <header class="prototype-header">
+      <div>
+        <p class="eyebrow">Viewer redesign study</p>
+        <h1>Five CT viewport directions</h1>
+      </div>
+      <div class="header-controls">
+        <span id="prototype-status">Preparing sample job</span>
+        <button id="reload-sample" type="button">Reload sample</button>
+      </div>
+    </header>
+
+    <aside class="slice-controls" aria-label="Shared slice controls">
+      <div class="global-scrub">
+        <label>
+          <span>Sync scrub</span>
+          <input id="sync-scrub" type="range" min="0" max="1000" value="500" />
+          <output id="sync-output">50%</output>
+        </label>
+        <small>Moves axial, coronal, and sagittal by same relative position.</small>
+      </div>
+      <div class="plane-scrubbers">
+        <label>
+          <span>Axial</span>
+          <input data-plane-control="axial" type="range" min="0" max="0" value="0" />
+          <output data-plane-output="axial">0 / 0</output>
+        </label>
+        <label>
+          <span>Coronal</span>
+          <input data-plane-control="coronal" type="range" min="0" max="0" value="0" />
+          <output data-plane-output="coronal">0 / 0</output>
+        </label>
+        <label>
+          <span>Sagittal</span>
+          <input data-plane-control="sagittal" type="range" min="0" max="0" value="0" />
+          <output data-plane-output="sagittal">0 / 0</output>
+        </label>
+      </div>
+    </aside>
+
+    <main>
+      <section class="prototype prototype-true-scale">
+        <div class="prototype-copy">
+          <span class="prototype-number">01</span>
+          <div>
+            <p class="eyebrow">True-scale grid</p>
+            <h2>Keep all three planes visible, but size each frame to physical anatomy.</h2>
+          </div>
+        </div>
+        <div class="true-scale-grid">
+          <article class="viewport large">
+            <header><strong>Axial</strong><span data-plane-counter="axial">0 / 0</span></header>
+            <div class="scan-frame" data-plane="axial"><img data-plane-image="axial" alt="Axial CT prototype" /></div>
+          </article>
+          <article class="viewport">
+            <header><strong>Coronal</strong><span data-plane-counter="coronal">0 / 0</span></header>
+            <div class="scan-frame" data-plane="coronal"><img data-plane-image="coronal" alt="Coronal CT prototype" /></div>
+          </article>
+          <article class="viewport">
+            <header><strong>Sagittal</strong><span data-plane-counter="sagittal">0 / 0</span></header>
+            <div class="scan-frame" data-plane="sagittal"><img data-plane-image="sagittal" alt="Sagittal CT prototype" /></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="prototype prototype-focus">
+        <div class="prototype-copy">
+          <span class="prototype-number">02</span>
+          <div>
+            <p class="eyebrow">Focus workstation</p>
+            <h2>One primary viewport, two reference rails, faster for close model review.</h2>
+          </div>
+        </div>
+        <div class="focus-layout">
+          <article class="viewport focus-main">
+            <header><strong>Coronal focus</strong><span data-plane-counter="coronal">0 / 0</span></header>
+            <div class="scan-frame" data-plane="coronal"><img data-plane-image="coronal" alt="Coronal CT focus prototype" /></div>
+          </article>
+          <div class="focus-rail">
+            <article class="viewport compact">
+              <header><strong>Axial</strong><span data-plane-counter="axial">0 / 0</span></header>
+              <div class="scan-frame" data-plane="axial"><img data-plane-image="axial" alt="Axial CT rail prototype" /></div>
+            </article>
+            <article class="viewport compact">
+              <header><strong>Sagittal</strong><span data-plane-counter="sagittal">0 / 0</span></header>
+              <div class="scan-frame" data-plane="sagittal"><img data-plane-image="sagittal" alt="Sagittal CT rail prototype" /></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="prototype prototype-stack">
+        <div class="prototype-copy">
+          <span class="prototype-number">03</span>
+          <div>
+            <p class="eyebrow">Full-width stack</p>
+            <h2>Give each plane its own row so thin z-axis slices can breathe.</h2>
+          </div>
+        </div>
+        <div class="stack-layout">
+          <article class="wide-row">
+            <header><strong>Axial</strong><span data-plane-counter="axial">0 / 0</span></header>
+            <div class="scan-frame" data-plane="axial"><img data-plane-image="axial" alt="Axial CT stacked prototype" /></div>
+          </article>
+          <article class="wide-row">
+            <header><strong>Coronal</strong><span data-plane-counter="coronal">0 / 0</span></header>
+            <div class="scan-frame" data-plane="coronal"><img data-plane-image="coronal" alt="Coronal CT stacked prototype" /></div>
+          </article>
+          <article class="wide-row">
+            <header><strong>Sagittal</strong><span data-plane-counter="sagittal">0 / 0</span></header>
+            <div class="scan-frame" data-plane="sagittal"><img data-plane-image="sagittal" alt="Sagittal CT stacked prototype" /></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="prototype prototype-eval">
+        <div class="prototype-copy">
+          <span class="prototype-number">04</span>
+          <div>
+            <p class="eyebrow">Evaluation matrix</p>
+            <h2>Put coronal and sagittal side by side, with axial plus scores as context.</h2>
+          </div>
+        </div>
+        <div class="eval-layout">
+          <article class="viewport">
+            <header><strong>Coronal</strong><span data-plane-counter="coronal">0 / 0</span></header>
+            <div class="scan-frame" data-plane="coronal"><img data-plane-image="coronal" alt="Coronal CT matrix prototype" /></div>
+          </article>
+          <article class="viewport">
+            <header><strong>Sagittal</strong><span data-plane-counter="sagittal">0 / 0</span></header>
+            <div class="scan-frame" data-plane="sagittal"><img data-plane-image="sagittal" alt="Sagittal CT matrix prototype" /></div>
+          </article>
+          <article class="viewport axial-context">
+            <header><strong>Axial context</strong><span data-plane-counter="axial">0 / 0</span></header>
+            <div class="scan-frame" data-plane="axial"><img data-plane-image="axial" alt="Axial CT matrix prototype" /></div>
+          </article>
+          <article class="score-panel">
+            <p class="eyebrow">Run scores</p>
+            <dl>
+              <div><dt>Mean Dice</dt><dd data-score="dice">0.000</dd></div>
+              <div><dt>Mean IoU</dt><dd data-score="iou">0.000</dd></div>
+              <div><dt>Matched</dt><dd data-score="matched">0 / 0</dd></div>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <section class="prototype prototype-filmstrip">
+        <div class="prototype-copy">
+          <span class="prototype-number">05</span>
+          <div>
+            <p class="eyebrow">Filmstrip inspector</p>
+            <h2>Use a large diagnostic pane with compact plane thumbnails and label readout.</h2>
+          </div>
+        </div>
+        <div class="filmstrip-layout">
+          <aside class="filmstrip">
+            <article>
+              <strong>Axial</strong>
+              <div class="scan-frame" data-plane="axial"><img data-plane-image="axial" alt="Axial CT filmstrip prototype" /></div>
+            </article>
+            <article>
+              <strong>Coronal</strong>
+              <div class="scan-frame" data-plane="coronal"><img data-plane-image="coronal" alt="Coronal CT filmstrip prototype" /></div>
+            </article>
+            <article>
+              <strong>Sagittal</strong>
+              <div class="scan-frame" data-plane="sagittal"><img data-plane-image="sagittal" alt="Sagittal CT filmstrip prototype" /></div>
+            </article>
+          </aside>
+          <article class="viewport filmstrip-main">
+            <header><strong>Sagittal inspection</strong><span data-plane-counter="sagittal">0 / 0</span></header>
+            <div class="scan-frame" data-plane="sagittal"><img data-plane-image="sagittal" alt="Sagittal CT inspection prototype" /></div>
+          </article>
+          <aside class="label-readout">
+            <p class="eyebrow">Top structures</p>
+            <div id="label-preview"></div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
