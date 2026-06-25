@@ -1,6 +1,6 @@
 # BodyMaps Web Inference Demo
 
-Local-first MVP for Johns Hopkins BodyMaps developer application, Project 2: web-based AI inference and model evaluation. Browser accepts CT data, backend validates upload and runs an observable model adapter, local artifacts persist each job, and result UI reports inference trace plus Dice/IoU segmentation metrics when ground-truth masks are available.
+Local-first MVP for Johns Hopkins BodyMaps developer application, Project 2: web-based AI inference and model evaluation. Browser accepts CT data, backend validates upload and runs an observable model adapter, local artifacts persist each job, and result UI reports inference trace, organ stats, slice viewer controls, and Dice/IoU segmentation metrics when ground-truth masks are available.
 
 ## Current asset situation
 
@@ -34,6 +34,12 @@ Default configuration auto-detects `~/Downloads/BDMAP_00000338.zip`. For another
 export BODYMAPS_SAMPLE_CT=/absolute/path/to/BDMAP_00000338.zip
 ```
 
+Default upload cap is `2048 MB`. Override for larger or smaller bundles:
+
+```sh
+export BODYMAPS_MAX_UPLOAD_MB=4096
+```
+
 ## Run
 
 ```sh
@@ -48,7 +54,7 @@ One-command real-sample smoke:
 uv run python scripts/smoke_sample.py
 ```
 
-Smoke writes job record, logs, normalized viewer arrays, evaluation metrics, structured result, and three preview PNGs under `artifacts/<job-id>/`.
+Smoke writes job record, logs, normalized viewer arrays, organ stats, evaluation metrics, structured result, and three preview PNGs under `artifacts/<job-id>/`.
 
 ## Model evaluation flow
 
@@ -59,6 +65,8 @@ For real model testing, upload a BodyMaps bundle that contains `ct.nii.gz` plus 
 - `bundle`: uses provided masks as output; useful for verifying upload, visualization, and scoring plumbing, not model quality.
 
 When prediction label names match reference mask names, the runner writes `output/evaluation.json` and attaches per-structure Dice, IoU, false-positive voxels, and false-negative voxels to the job result.
+
+The result viewer supports axial/coronal/sagittal focus switching, CT window presets, custom window width/center, overlay opacity, per-label hide/show, label jump targets, shareable URL state, and local recent/saved job history. Organ stats are computed from `volume.npy`, `mask.npy`, `labels.json`, and spacing metadata; they summarize mask geometry and HU values for review only and are not clinical claims.
 
 ## Doctor
 
@@ -130,6 +138,7 @@ artifacts/<job-id>/
     ├── evaluation.json
     ├── labels.json
     ├── mask.npy
+    ├── organ_stats.json
     ├── volume.npy
     ├── previews/
     └── source/
@@ -148,5 +157,4 @@ artifacts/<job-id>/
 - SuPreM live inference cannot run on current arm64/32 GB/no-CUDA machine.
 - First pass supports actual discovered format: BodyMaps ZIP/NIfTI. DICOM and NRRD are intentionally deferred.
 - Jobs run locally in FastAPI background tasks; no durable queue or multi-user concurrency.
-- Viewer uses abdomen window center `40 HU`, width `400 HU`; interactive windowing is not implemented.
 - App is research demo software, not a medical device and not for clinical use.

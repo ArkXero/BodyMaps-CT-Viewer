@@ -40,7 +40,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
-        max_upload_mb = int(os.getenv("BODYMAPS_MAX_UPLOAD_MB", "512"))
+        max_upload_mb = int(os.getenv("BODYMAPS_MAX_UPLOAD_MB", "2048"))
         return cls(
             repo_root=REPO_ROOT,
             artifacts_dir=_path_from_env("BODYMAPS_ARTIFACTS_DIR", _default_artifacts_dir()),

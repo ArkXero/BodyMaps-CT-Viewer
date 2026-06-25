@@ -8,6 +8,7 @@ from typing import Any
 import nibabel as nib
 import numpy as np
 
+from .organ_stats import attach_organ_stats
 from .storage import write_json
 
 LABEL_COLORS = [
@@ -144,5 +145,6 @@ def run_bundle_inference(input_path: Path, output_dir: Path) -> dict[str, Any]:
             {"name": "Combined mask", "path": "output/mask.npy"},
         ],
     }
+    attach_organ_stats(output_dir, result)
     write_json(output_dir / "result.json", result)
     return result

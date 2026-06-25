@@ -134,21 +134,58 @@
         </article>
 
         <div class="viewer-toolbar" id="viewer-toolbar">
-          <div>
+          <div class="viewer-toolbar-copy">
             <span class="eyebrow">Slice navigation</span>
             <h3>Sync all planes</h3>
-            <p>Use the global scrubber to move axial, coronal, and sagittal by the same relative depth.</p>
+            <p>Axial · Coronal · Sagittal</p>
+          </div>
+          <div class="viewer-control-panel" aria-label="Viewer controls">
+            <div class="preset-row" aria-label="CT window presets">
+              <button type="button" data-window-preset="soft">Soft Tissue</button>
+              <button type="button" data-window-preset="bone">Bone</button>
+              <button type="button" data-window-preset="lung">Lung</button>
+              <button type="button" data-window-preset="liver">Liver</button>
+            </div>
+            <div class="window-control-grid">
+              <label>
+                <span>Width</span>
+                <input id="window-width-input" type="number" min="1" max="6000" step="1" value="400" />
+              </label>
+              <label>
+                <span>Center</span>
+                <input id="window-center-input" type="number" min="-2000" max="2000" step="1" value="40" />
+              </label>
+              <label>
+                <span>Opacity</span>
+                <input id="overlay-opacity-input" type="range" min="0" max="100" value="58" />
+                <output id="overlay-opacity-output">58%</output>
+              </label>
+            </div>
+            <div class="viewer-action-row">
+              <button class="button button-quiet" id="share-view-button" type="button">Share view</button>
+              <button class="button button-quiet" id="save-view-button" type="button">Save view</button>
+            </div>
           </div>
           <label class="global-slice-control">
             <span>Sync scrub</span>
             <input id="sync-slice-slider" type="range" min="0" max="1000" value="500" />
             <output id="sync-slice-output">50%</output>
           </label>
+          <div class="local-history-grid">
+            <section>
+              <span>Recent</span>
+              <div id="recent-job-list"></div>
+            </section>
+            <section>
+              <span>Saved</span>
+              <div id="saved-job-list"></div>
+            </section>
+          </div>
         </div>
 
         <div class="viewer-workstation" id="viewer-grid">
           <aside class="viewer-filmstrip" aria-label="Plane thumbnails">
-          <article class="viewer-card viewer-thumb" data-plane="axial">
+          <article class="viewer-card viewer-thumb" data-plane="axial" tabindex="0" aria-label="Focus axial view">
             <div class="viewer-label">
               <button class="plane-focus-button" type="button" data-select-plane="axial">Axial</button>
               <span class="slice-value">0 / 0</span>
@@ -160,7 +197,7 @@
               <output class="slice-output">0 / 0</output>
             </label>
           </article>
-          <article class="viewer-card viewer-thumb" data-plane="coronal">
+          <article class="viewer-card viewer-thumb" data-plane="coronal" tabindex="0" aria-label="Focus coronal view">
             <div class="viewer-label">
               <button class="plane-focus-button" type="button" data-select-plane="coronal">Coronal</button>
               <span class="slice-value">0 / 0</span>
@@ -172,7 +209,7 @@
               <output class="slice-output">0 / 0</output>
             </label>
           </article>
-          <article class="viewer-card viewer-thumb" data-plane="sagittal">
+          <article class="viewer-card viewer-thumb" data-plane="sagittal" tabindex="0" aria-label="Focus sagittal view">
             <div class="viewer-label">
               <button class="plane-focus-button" type="button" data-select-plane="sagittal">Sagittal</button>
               <span class="slice-value">0 / 0</span>

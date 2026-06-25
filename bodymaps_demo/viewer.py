@@ -34,6 +34,8 @@ def render_slice(
     overlay: bool,
     window_center: float = 40,
     window_width: float = 400,
+    overlay_opacity: float = 0.58,
+    hidden_labels: set[int] | None = None,
 ) -> bytes:
     volume_path = output_dir / "volume.npy"
     mask_path = output_dir / "mask.npy"
@@ -45,6 +47,8 @@ def render_slice(
     depth = plane_depth(volume.shape, plane)
     if index < 0 or index >= depth:
         raise IndexError(f"Slice index {index} outside 0..{depth - 1}.")
+    if window_width <= 0:
+        raise ValueError("window_width must be greater than 0.")
     source = _slice(volume, plane, index).astype(np.float32)
     low = window_center - window_width / 2
     gray = np.clip((source - low) / window_width, 0, 1)
@@ -52,11 +56,16 @@ def render_slice(
     rgb = np.repeat(gray[:, :, None], 3, axis=2).astype(np.float32)
 
     if overlay and mask_path.is_file() and labels_path.is_file():
+        opacity = float(np.clip(overlay_opacity, 0, 1))
+        hidden = hidden_labels or set()
         mask = np.load(mask_path, mmap_mode="r", allow_pickle=False)
         mask_slice = _slice(mask, plane, index)
         labels = json.loads(labels_path.read_text(encoding="utf-8"))
         for label in labels:
-            selected = mask_slice == label["id"]
+            label_id = int(label["id"])
+            if label_id in hidden:
+                continue
+            selected = mask_slice == label_id
             if not selected.any():
                 continue
             color = label["color"].lstrip("#")
@@ -64,7 +73,7 @@ def render_slice(
                 [int(color[offset : offset + 2], 16) for offset in (0, 2, 4)],
                 dtype=np.float32,
             )
-            rgb[selected] = rgb[selected] * 0.42 + color_rgb * 0.58
+            rgb[selected] = rgb[selected] * (1 - opacity) + color_rgb * opacity
 
     image = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), mode="RGB")
     buffer = io.BytesIO()

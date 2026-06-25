@@ -1,4 +1,14 @@
 const PLANES = ["axial", "coronal", "sagittal"];
+const STORAGE_KEYS = {
+  recent: "bodymaps.recentJobs.v1",
+  saved: "bodymaps.savedJobs.v1",
+};
+const WINDOW_PRESETS = {
+  soft: { label: "Soft Tissue", windowWidth: 400, windowCenter: 40 },
+  bone: { label: "Bone", windowWidth: 1800, windowCenter: 400 },
+  lung: { label: "Lung", windowWidth: 1500, windowCenter: -600 },
+  liver: { label: "Liver", windowWidth: 150, windowCenter: 30 },
+};
 
 const state = {
   config: null,
@@ -14,6 +24,11 @@ const state = {
     lastRenderAt: { axial: 0, coronal: 0, sagittal: 0 },
     sliceControllers: { axial: null, coronal: null, sagittal: null },
     sliceUrls: { axial: null, coronal: null, sagittal: null },
+    windowWidth: 400,
+    windowCenter: 40,
+    overlayOpacity: 0.58,
+    hiddenLabels: new Set(),
+    organStatsById: new Map(),
   },
 };
 
@@ -33,6 +48,14 @@ const elements = {
   jobMessage: document.querySelector("#job-message"),
   results: document.querySelector("#results-section"),
   overlayToggle: document.querySelector("#overlay-toggle"),
+  windowWidthInput: document.querySelector("#window-width-input"),
+  windowCenterInput: document.querySelector("#window-center-input"),
+  overlayOpacityInput: document.querySelector("#overlay-opacity-input"),
+  overlayOpacityOutput: document.querySelector("#overlay-opacity-output"),
+  shareViewButton: document.querySelector("#share-view-button"),
+  saveViewButton: document.querySelector("#save-view-button"),
+  recentJobList: document.querySelector("#recent-job-list"),
+  savedJobList: document.querySelector("#saved-job-list"),
   syncSliceSlider: document.querySelector("#sync-slice-slider"),
   syncSliceOutput: document.querySelector("#sync-slice-output"),
   focusPlaneLabel: document.querySelector("#focus-plane-label"),
@@ -67,10 +90,33 @@ async function request(url, options = {}) {
   return payload;
 }
 
+function getMaxUploadBytes() {
+  if (!state.config?.max_upload_mb) return null;
+  return state.config.max_upload_mb * 1024 * 1024;
+}
+
+function canUploadSelectedFile() {
+  if (!state.file) return false;
+  const maxUploadBytes = getMaxUploadBytes();
+  return !maxUploadBytes || state.file.size <= maxUploadBytes;
+}
+
 function setSelectedFile(file) {
   state.file = file;
-  elements.fileLabel.textContent = file ? `${file.name} · ${formatBytes(file.size)}` : "Drop BodyMaps bundle here or choose file";
-  elements.uploadButton.disabled = !file;
+  if (!file) {
+    elements.fileLabel.textContent = "Drop BodyMaps bundle here or choose file";
+    elements.uploadButton.disabled = true;
+    return;
+  }
+  const maxUploadBytes = getMaxUploadBytes();
+  if (maxUploadBytes && file.size > maxUploadBytes) {
+    elements.fileLabel.textContent =
+      `${file.name} · ${formatBytes(file.size)} · exceeds ${formatBytes(maxUploadBytes)} limit`;
+    elements.uploadButton.disabled = true;
+    return;
+  }
+  elements.fileLabel.textContent = `${file.name} · ${formatBytes(file.size)}`;
+  elements.uploadButton.disabled = false;
 }
 
 function formatBytes(value) {
@@ -109,6 +155,153 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function formatPlane(plane) {
+  return `${plane.charAt(0).toUpperCase()}${plane.slice(1)}`;
+}
+
+function parseFiniteNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseHiddenLabels(value) {
+  if (!value) return new Set();
+  return new Set(
+    value
+      .split(",")
+      .map((token) => Number(token.trim()))
+      .filter((labelId) => Number.isInteger(labelId) && labelId > 0),
+  );
+}
+
+function hiddenLabelsString() {
+  return [...state.viewer.hiddenLabels].sort((left, right) => left - right).join(",");
+}
+
+function syncViewerInputs() {
+  elements.windowWidthInput.value = String(Math.round(state.viewer.windowWidth));
+  elements.windowCenterInput.value = String(Math.round(state.viewer.windowCenter));
+  elements.overlayOpacityInput.value = String(Math.round(state.viewer.overlayOpacity * 100));
+  elements.overlayOpacityOutput.textContent = `${Math.round(state.viewer.overlayOpacity * 100)}%`;
+}
+
+function loadStoredList(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value.filter((item) => item?.jobId) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredList(key, entries) {
+  try {
+    localStorage.setItem(key, JSON.stringify(entries.slice(0, 12)));
+  } catch {
+    // Local history is optional; artifacts remain source of truth.
+  }
+}
+
+function currentViewState() {
+  const plane = state.viewer.activePlane;
+  const depth = state.viewer.depths[plane] || 1;
+  const progress = depth > 1 ? state.viewer.indices[plane] / (depth - 1) : state.viewer.globalProgress;
+  return {
+    jobId: state.job?.id || "",
+    sourceName: state.job?.source_name || "completed job",
+    savedAt: new Date().toISOString(),
+    plane,
+    progress: Number(clamp(progress, 0, 1).toFixed(4)),
+    ww: Math.round(state.viewer.windowWidth),
+    wc: Math.round(state.viewer.windowCenter),
+    op: Number(state.viewer.overlayOpacity.toFixed(2)),
+    hide: hiddenLabelsString(),
+  };
+}
+
+function viewStateFromParams() {
+  const params = new URLSearchParams(window.location.search);
+  const jobId = params.get("job") || "";
+  if (!jobId && !params.has("plane") && !params.has("progress")) return null;
+  return {
+    jobId,
+    plane: PLANES.includes(params.get("plane")) ? params.get("plane") : state.viewer.activePlane,
+    progress: clamp(parseFiniteNumber(params.get("progress"), state.viewer.globalProgress), 0, 1),
+    ww: clamp(parseFiniteNumber(params.get("ww"), state.viewer.windowWidth), 1, 6000),
+    wc: clamp(parseFiniteNumber(params.get("wc"), state.viewer.windowCenter), -2000, 2000),
+    op: clamp(parseFiniteNumber(params.get("op"), state.viewer.overlayOpacity), 0, 1),
+    hide: params.get("hide") || "",
+  };
+}
+
+function applyViewState(viewState) {
+  if (!viewState) return;
+  if (PLANES.includes(viewState.plane)) {
+    state.viewer.activePlane = viewState.plane;
+  }
+  state.viewer.globalProgress = clamp(parseFiniteNumber(viewState.progress, state.viewer.globalProgress), 0, 1);
+  state.viewer.windowWidth = clamp(parseFiniteNumber(viewState.ww, state.viewer.windowWidth), 1, 6000);
+  state.viewer.windowCenter = clamp(parseFiniteNumber(viewState.wc, state.viewer.windowCenter), -2000, 2000);
+  state.viewer.overlayOpacity = clamp(parseFiniteNumber(viewState.op, state.viewer.overlayOpacity), 0, 1);
+  state.viewer.hiddenLabels = parseHiddenLabels(viewState.hide);
+  syncViewerInputs();
+}
+
+function updateShareUrl() {
+  if (!state.job?.id) return "";
+  const view = currentViewState();
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("job", view.jobId);
+  url.searchParams.set("plane", view.plane);
+  url.searchParams.set("progress", String(view.progress));
+  url.searchParams.set("ww", String(view.ww));
+  url.searchParams.set("wc", String(view.wc));
+  url.searchParams.set("op", String(view.op));
+  if (view.hide) url.searchParams.set("hide", view.hide);
+  window.history.replaceState(null, "", url);
+  return url.toString();
+}
+
+function rememberCompletedJob(job) {
+  if (job.status !== "completed") return;
+  const entry = currentViewState();
+  entry.jobId = job.id;
+  entry.sourceName = job.source_name || entry.sourceName;
+  const recent = loadStoredList(STORAGE_KEYS.recent).filter((item) => item.jobId !== job.id);
+  saveStoredList(STORAGE_KEYS.recent, [entry, ...recent].slice(0, 8));
+}
+
+function renderStoredJobs(container, key, emptyText) {
+  const entries = loadStoredList(key);
+  container.replaceChildren();
+  if (!entries.length) {
+    const empty = document.createElement("small");
+    empty.className = "history-empty";
+    empty.textContent = emptyText;
+    container.append(empty);
+    return;
+  }
+
+  entries.slice(0, 5).forEach((entry) => {
+    const button = document.createElement("button");
+    button.className = "history-item";
+    button.type = "button";
+    const name = document.createElement("span");
+    name.textContent = entry.sourceName || entry.jobId;
+    const meta = document.createElement("small");
+    meta.textContent = `${formatPlane(entry.plane || "sagittal")} · ${entry.jobId}`;
+    button.append(name, meta);
+    button.addEventListener("click", () => restoreStoredJob(entry));
+    container.append(button);
+  });
+}
+
+function renderHistoryLists() {
+  renderStoredJobs(elements.recentJobList, STORAGE_KEYS.recent, "No recent jobs");
+  renderStoredJobs(elements.savedJobList, STORAGE_KEYS.saved, "No saved views");
+}
+
 function planeDepth(shape, plane) {
   return { sagittal: shape[0], coronal: shape[1], axial: shape[2] }[plane];
 }
@@ -133,6 +326,80 @@ function applyFrameGeometry(frame, job, plane) {
   frame.style.setProperty("--scale-y", verticalScale(spacing, plane).toFixed(4));
 }
 
+function statsForLabel(labelId) {
+  return state.viewer.organStatsById.get(Number(labelId)) || null;
+}
+
+function renderAllPlanes() {
+  if (!state.job?.id) return;
+  PLANES.forEach((plane) => scheduleSliceLoad(plane));
+  updateShareUrl();
+}
+
+function syncLabelVisibilityControls() {
+  document.querySelectorAll("[data-label-row]").forEach((row) => {
+    const labelId = Number(row.dataset.labelRow);
+    const hidden = state.viewer.hiddenLabels.has(labelId);
+    row.classList.toggle("is-hidden", hidden);
+    const checkbox = row.querySelector("input[type='checkbox']");
+    if (checkbox) checkbox.checked = !hidden;
+  });
+}
+
+function setLabelHidden(labelId, hidden) {
+  if (hidden) {
+    state.viewer.hiddenLabels.add(labelId);
+  } else {
+    state.viewer.hiddenLabels.delete(labelId);
+  }
+  syncLabelVisibilityControls();
+  renderAllPlanes();
+}
+
+function setWindowSettings(changes) {
+  state.viewer.windowWidth = clamp(
+    parseFiniteNumber(changes.windowWidth, state.viewer.windowWidth),
+    1,
+    6000,
+  );
+  state.viewer.windowCenter = clamp(
+    parseFiniteNumber(changes.windowCenter, state.viewer.windowCenter),
+    -2000,
+    2000,
+  );
+  state.viewer.overlayOpacity = clamp(
+    parseFiniteNumber(changes.overlayOpacity, state.viewer.overlayOpacity),
+    0,
+    1,
+  );
+  syncViewerInputs();
+  renderAllPlanes();
+}
+
+function sliceForStatPlane(stat, plane) {
+  if (!stat) return null;
+  const bestSlice = stat.best_slice_index?.[plane];
+  if (Number.isInteger(bestSlice)) return bestSlice;
+  const axis = { sagittal: 0, coronal: 1, axial: 2 }[plane];
+  const centroid = stat.centroid_index?.[axis];
+  return Number.isInteger(centroid) ? centroid : null;
+}
+
+function jumpToStructure(labelId) {
+  const stat = statsForLabel(labelId);
+  const plane = PLANES.includes(stat?.best_plane) ? stat.best_plane : state.viewer.activePlane;
+  const slice = sliceForStatPlane(stat, plane);
+  state.viewer.hiddenLabels.delete(labelId);
+  syncLabelVisibilityControls();
+  setFocusPlane(plane, false);
+  if (Number.isInteger(slice)) {
+    setPlaneIndex(plane, slice);
+  } else {
+    updateFocusControls();
+    renderAllPlanes();
+  }
+}
+
 function indexFromProgress(plane, progress) {
   const depth = state.viewer.depths[plane] || 1;
   return Math.round((depth - 1) * clamp(progress, 0, 1));
@@ -142,6 +409,8 @@ function showJob(jobId) {
   state.job = { id: jobId, status: "queued" };
   state.viewer.globalProgress = 0.5;
   state.viewer.activePlane = "sagittal";
+  state.viewer.hiddenLabels = new Set();
+  state.viewer.organStatsById = new Map();
   elements.jobPanel.classList.remove("hidden");
   elements.results.classList.add("hidden");
   elements.jobTitle.textContent = `Job ${jobId}`;
@@ -190,6 +459,7 @@ function configureViewer(job) {
     state.viewer.depths[plane] = planeDepth(shape, plane);
     applyFrameGeometry(card.querySelector(".image-frame"), job, plane);
   });
+  syncViewerInputs();
   setFocusPlane(state.viewer.activePlane, false);
   setGlobalProgress(state.viewer.globalProgress);
 }
@@ -215,7 +485,7 @@ function updateFocusControls() {
   const depth = state.viewer.depths[plane] || 1;
   const value = clamp(state.viewer.indices[plane], 0, depth - 1);
   const counter = `${value + 1} / ${depth}`;
-  elements.focusPlaneLabel.textContent = `${plane} inspection`;
+  elements.focusPlaneLabel.textContent = `${formatPlane(plane)} inspection`;
   elements.focusSliceValue.textContent = counter;
   elements.focusSliceSlider.max = String(depth - 1);
   elements.focusSliceSlider.value = String(value);
@@ -230,9 +500,11 @@ function updateFocusControls() {
 }
 
 function setFocusPlane(plane, shouldRender = true) {
+  if (!PLANES.includes(plane)) return;
   state.viewer.activePlane = plane;
   updateFocusControls();
   if (shouldRender) scheduleSliceLoad(plane);
+  updateShareUrl();
 }
 
 function setPlaneImages(plane, url) {
@@ -252,9 +524,19 @@ async function loadPlaneImage(plane) {
   state.viewer.sliceControllers[plane] = controller;
   const index = state.viewer.indices[plane];
   const overlay = elements.overlayToggle.checked;
+  const params = new URLSearchParams({
+    plane,
+    index: String(index),
+    overlay: String(overlay),
+    window_center: String(state.viewer.windowCenter),
+    window_width: String(state.viewer.windowWidth),
+    overlay_opacity: String(state.viewer.overlayOpacity),
+  });
+  const hidden = hiddenLabelsString();
+  if (hidden) params.set("hidden_labels", hidden);
   try {
     const response = await fetch(
-      `/api/jobs/${state.job.id}/slice?plane=${plane}&index=${index}&overlay=${overlay}`,
+      `/api/jobs/${state.job.id}/slice?${params.toString()}`,
       { signal: controller.signal },
     );
     if (!response.ok) return;
@@ -292,6 +574,7 @@ function scheduleSliceLoad(plane) {
 function setPlaneIndex(plane, index) {
   state.viewer.indices[plane] = clamp(index, 0, Math.max(0, state.viewer.depths[plane] - 1));
   updatePlane(plane);
+  if (state.viewer.activePlane === plane) updateShareUrl();
 }
 
 function setGlobalProgress(progress) {
@@ -303,6 +586,7 @@ function setGlobalProgress(progress) {
     state.viewer.indices[plane] = indexFromProgress(plane, state.viewer.globalProgress);
     updatePlane(plane);
   });
+  updateShareUrl();
 }
 
 function renderViewerStructures(labels) {
@@ -311,21 +595,35 @@ function renderViewerStructures(labels) {
     .slice(0, 6);
   elements.viewerStructureList.replaceChildren();
   topLabels.forEach((label) => {
+    const stat = statsForLabel(label.id);
     const row = document.createElement("div");
     row.className = "viewer-structure-row";
+    row.dataset.labelRow = String(label.id);
     const swatch = document.createElement("i");
     swatch.style.background = label.color;
     const name = document.createElement("span");
     name.textContent = label.name;
     const count = document.createElement("small");
-    count.textContent = Number(label.voxel_count).toLocaleString();
-    row.append(swatch, name, count);
+    count.textContent = stat?.volume_cm3
+      ? `${stat.volume_cm3.toLocaleString()} cm3`
+      : Number(label.voxel_count).toLocaleString();
+    const jump = document.createElement("button");
+    jump.className = "structure-jump-button";
+    jump.type = "button";
+    jump.textContent = "Target";
+    jump.addEventListener("click", () => jumpToStructure(Number(label.id)));
+    row.append(swatch, name, count, jump);
     elements.viewerStructureList.append(row);
   });
+  syncLabelVisibilityControls();
 }
 
-function renderResult(job) {
+function renderResult(job, options = {}) {
   const result = job.result;
+  const shouldScroll = options.scroll !== false;
+  state.viewer.organStatsById = new Map(
+    (result.organ_stats?.labels || []).map((row) => [Number(row.id), row]),
+  );
   elements.results.classList.remove("hidden");
   elements.resultSummary.textContent = result.summary || "Inference completed.";
   elements.resultDisclaimer.textContent = result.disclaimer || "";
@@ -367,17 +665,35 @@ function renderResult(job) {
 
   elements.labelList.replaceChildren();
   (result.labels || []).forEach((label) => {
+    const stat = statsForLabel(label.id);
     const row = document.createElement("div");
     row.className = "label-row";
+    row.dataset.labelRow = String(label.id);
     const swatch = document.createElement("i");
     swatch.style.background = label.color;
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.checked = !state.viewer.hiddenLabels.has(Number(label.id));
+    toggle.setAttribute("aria-label", `Show ${label.name}`);
+    toggle.addEventListener("change", () => {
+      setLabelHidden(Number(label.id), !toggle.checked);
+    });
     const name = document.createElement("span");
     name.textContent = label.name;
     const count = document.createElement("small");
-    count.textContent = `${Number(label.voxel_count).toLocaleString()} vox`;
-    row.append(swatch, name, count);
+    const mean = Number.isFinite(stat?.mean_hu) ? ` · ${stat.mean_hu} HU` : "";
+    count.textContent = stat
+      ? `${stat.volume_cm3.toLocaleString()} cm3${mean}`
+      : `${Number(label.voxel_count).toLocaleString()} vox`;
+    const jump = document.createElement("button");
+    jump.className = "structure-jump-button";
+    jump.type = "button";
+    jump.textContent = "Target";
+    jump.addEventListener("click", () => jumpToStructure(Number(label.id)));
+    row.append(toggle, swatch, name, count, jump);
     elements.labelList.append(row);
   });
+  syncLabelVisibilityControls();
   renderViewerStructures(result.labels || []);
 
   const execution = job.execution || {};
@@ -404,7 +720,69 @@ function renderResult(job) {
   });
 
   configureViewer(job);
-  elements.results.scrollIntoView({ behavior: "smooth", block: "start" });
+  rememberCompletedJob(job);
+  renderHistoryLists();
+  updateShareUrl();
+  if (shouldScroll) elements.results.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function loadCompletedJob(jobId, viewState = null, options = {}) {
+  if (!jobId) return false;
+  try {
+    const job = await request(`/api/jobs/${jobId}`);
+    if (job.status !== "completed") return false;
+    if (viewState) applyViewState(viewState);
+    state.job = job;
+    elements.jobPanel.classList.remove("hidden");
+    elements.jobTitle.textContent = `Job ${job.id}`;
+    elements.statusPill.textContent = "Completed";
+    elements.progressBar.style.width = "100%";
+    elements.jobMessage.textContent = "Restored completed local job.";
+    renderResult(job, { scroll: options.scroll });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function restoreStoredJob(entry) {
+  applyViewState(entry);
+  await loadCompletedJob(entry.jobId, entry, { scroll: true });
+}
+
+async function restoreInitialJob() {
+  const shared = viewStateFromParams();
+  if (shared) applyViewState(shared);
+  if (shared?.jobId && (await loadCompletedJob(shared.jobId, shared, { scroll: false }))) {
+    return;
+  }
+  const [recent] = loadStoredList(STORAGE_KEYS.recent);
+  if (recent) {
+    await loadCompletedJob(recent.jobId, recent, { scroll: false });
+  }
+}
+
+async function shareCurrentView() {
+  const url = updateShareUrl();
+  if (!url) return;
+  try {
+    if (!navigator.clipboard) throw new Error("Clipboard unavailable.");
+    await navigator.clipboard.writeText(url);
+    elements.shareViewButton.textContent = "Copied";
+  } catch {
+    elements.shareViewButton.textContent = "URL ready";
+  }
+  setTimeout(() => {
+    elements.shareViewButton.textContent = "Share view";
+  }, 1400);
+}
+
+function saveCurrentView() {
+  if (!state.job?.id) return;
+  const entry = currentViewState();
+  const saved = loadStoredList(STORAGE_KEYS.saved).filter((item) => item.jobId !== entry.jobId);
+  saveStoredList(STORAGE_KEYS.saved, [entry, ...saved].slice(0, 8));
+  renderHistoryLists();
 }
 
 async function submitUpload(event) {
@@ -419,7 +797,7 @@ async function submitUpload(event) {
   } catch (error) {
     elements.fileLabel.textContent = error.message;
   } finally {
-    elements.uploadButton.disabled = !state.file;
+    elements.uploadButton.disabled = !canUploadSelectedFile();
   }
 }
 
@@ -466,6 +844,8 @@ async function showDoctor() {
 }
 
 async function initialize() {
+  syncViewerInputs();
+  renderHistoryLists();
   try {
     state.config = await request("/api/config");
     elements.adapterName.textContent = `${state.config.adapter} adapter`;
@@ -480,6 +860,7 @@ async function initialize() {
     elements.adapterName.textContent = `Runtime unavailable: ${error.message}`;
     elements.sampleButton.disabled = true;
   }
+  await restoreInitialJob();
 }
 
 elements.fileInput.addEventListener("change", () => setSelectedFile(elements.fileInput.files[0] || null));
@@ -488,7 +869,24 @@ elements.sampleButton.addEventListener("click", submitSample);
 document.querySelector("#doctor-button").addEventListener("click", showDoctor);
 document.querySelector("#doctor-close").addEventListener("click", () => elements.doctorDialog.close());
 elements.overlayToggle.addEventListener("change", () => {
-  PLANES.forEach(updatePlane);
+  renderAllPlanes();
+});
+elements.windowWidthInput.addEventListener("change", (event) => {
+  setWindowSettings({ windowWidth: Number(event.target.value) });
+});
+elements.windowCenterInput.addEventListener("change", (event) => {
+  setWindowSettings({ windowCenter: Number(event.target.value) });
+});
+elements.overlayOpacityInput.addEventListener("input", (event) => {
+  setWindowSettings({ overlayOpacity: Number(event.target.value) / 100 });
+});
+elements.shareViewButton.addEventListener("click", shareCurrentView);
+elements.saveViewButton.addEventListener("click", saveCurrentView);
+document.querySelectorAll("[data-window-preset]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const preset = WINDOW_PRESETS[button.dataset.windowPreset];
+    if (preset) setWindowSettings(preset);
+  });
 });
 elements.syncSliceSlider.addEventListener("input", (event) => {
   setGlobalProgress(Number(event.target.value) / 1000);
@@ -497,6 +895,18 @@ document.querySelectorAll(".viewer-card").forEach((card) => {
   if (!card.dataset.plane) return;
   card.querySelector(".slice-slider").addEventListener("input", (event) => {
     setPlaneIndex(card.dataset.plane, Number(event.target.value));
+  });
+});
+document.querySelectorAll(".viewer-thumb").forEach((card) => {
+  const selectPlane = () => setFocusPlane(card.dataset.plane);
+  card.addEventListener("click", (event) => {
+    if (event.target.closest("button, input, label, a")) return;
+    selectPlane();
+  });
+  card.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    selectPlane();
   });
 });
 elements.focusSliceSlider.addEventListener("input", (event) => {

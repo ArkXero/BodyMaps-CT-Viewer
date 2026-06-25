@@ -19,6 +19,27 @@ from .viewer import plane_depth, render_slice
 ALLOWED_SUFFIXES = (".zip", ".nii", ".nii.gz")
 
 
+def _parse_hidden_labels(value: str | None) -> set[int]:
+    if value is None or value == "":
+        return set()
+    labels: set[int] = set()
+    for token in value.split(","):
+        token = token.strip()
+        if not token or not token.isdecimal():
+            raise HTTPException(
+                status_code=422,
+                detail="hidden_labels must be comma-separated positive label IDs.",
+            )
+        label_id = int(token)
+        if label_id <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail="hidden_labels must be comma-separated positive label IDs.",
+            )
+        labels.add(label_id)
+    return labels
+
+
 def _allowed_filename(filename: str) -> bool:
     return filename.lower().endswith(ALLOWED_SUFFIXES)
 
@@ -70,7 +91,11 @@ async def _save_upload(upload: UploadFile, destination: Path, max_bytes: int) ->
                 destination.unlink(missing_ok=True)
                 raise HTTPException(
                     status_code=413,
-                    detail=f"Upload exceeds configured limit of {max_bytes // (1024 * 1024)} MB.",
+                    detail=(
+                        "Upload exceeds configured limit of "
+                        f"{max_bytes // (1024 * 1024)} MB. "
+                        "Increase BODYMAPS_MAX_UPLOAD_MB for larger CT bundles."
+                    ),
                 )
             output.write(chunk)
     if total == 0:
@@ -176,7 +201,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         plane: Annotated[str, Query(pattern="^(axial|coronal|sagittal)$")],
         index: Annotated[int | None, Query(ge=0)] = None,
         overlay: bool = True,
+        window_center: float = 40,
+        window_width: Annotated[float, Query(gt=0)] = 400,
+        overlay_opacity: float = 0.58,
+        hidden_labels: str | None = None,
     ) -> Response:
+        hidden_label_ids = _parse_hidden_labels(hidden_labels)
         try:
             job = store.load(job_id)
         except KeyError as error:
@@ -190,7 +220,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             volume = np.load(output_dir / "volume.npy", mmap_mode="r", allow_pickle=False)
             depth = plane_depth(volume.shape, plane)
             selected = depth // 2 if index is None else index
-            image = render_slice(output_dir, plane, selected, overlay)
+            image = render_slice(
+                output_dir,
+                plane,
+                selected,
+                overlay,
+                window_center=window_center,
+                window_width=window_width,
+                overlay_opacity=overlay_opacity,
+                hidden_labels=hidden_label_ids,
+            )
         except (FileNotFoundError, IndexError, ValueError) as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return Response(

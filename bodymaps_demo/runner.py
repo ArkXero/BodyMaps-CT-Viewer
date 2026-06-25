@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .config import Settings
 from .evaluation import evaluate_prediction
+from .organ_stats import attach_organ_stats
 from .storage import JobStore, utc_now, write_json
 
 
@@ -170,6 +171,13 @@ class JobRunner:
             return
 
         try:
+            attach_organ_stats(output_dir, result)
+        except (FileNotFoundError, ValueError, json.JSONDecodeError) as error:
+            warnings = result.setdefault("warnings", [])
+            if isinstance(warnings, list):
+                warnings.append(f"Organ stats unavailable: {error}")
+
+        try:
             evaluation = evaluate_prediction(input_files[0], output_dir, result)
         except Exception as error:
             evaluation = {
@@ -183,7 +191,7 @@ class JobRunner:
             downloads = result.setdefault("downloads", [])
             if isinstance(downloads, list):
                 downloads.append({"name": "Evaluation metrics", "path": "output/evaluation.json"})
-            write_json(result_path, result)
+        write_json(result_path, result)
 
         self.store.update(
             job_id,
